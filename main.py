@@ -1,10 +1,11 @@
 import logging
 import json
 from typing import Dict, Any
+from datetime import datetime
 from src.agents.management_agent import ManagementAgent
-# from src.agents.analysis_assessment_recommendation_agent import AnalysisAssessmentRecommendationAgent
+from src.agents.analysis_assessment_recommendation_agent import AnalysisAssessmentRecommendationAgent
 from src.agents.tool_execution_agent import ToolExecutionAgent
-# from src.agents.report_agent import ReportAgent
+from src.agents.report_agent import ReportAgent
 
 # Configure logging
 logging.basicConfig(
@@ -22,9 +23,9 @@ class MultiAgentSecuritySystem:
         self.management_agent = ManagementAgent(model_name)
         
         # Initialize Sub-Agents
-        self.analysis_agent = None
+        self.analysis_agent = AnalysisAssessmentRecommendationAgent(model_name)
         self.tool_agent = ToolExecutionAgent(model_name)
-        self.report_agent = None
+        self.report_agent = ReportAgent(model_name)
         
         # Register sub-agents with management agent
         self._register_agents()
@@ -87,107 +88,9 @@ class MultiAgentSecuritySystem:
             print("\n=== System Response ===")
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
-    # =========================== TEST MANAGEMENT AGENT ===========================
-    def test_management_agent_only(self, user_input: str) -> Dict:
-            """
-            Test only the Management Agent analysis without executing sub-agents
-            """
-            self.logger.info(f"Testing Management Agent analysis for: {user_input}")
-            
-            try:
-                # Only test the analysis part of ManagementAgent
-                execution_plan = self.management_agent._create_execution_plan(user_input)
-                
-                if not execution_plan:
-                    return {
-                        "error": "Management Agent failed to create execution plan",
-                        "status": "failed"
-                    }
-                
-                return {
-                    "status": "success",
-                    "agent": "ManagementAgent",
-                    "user_request": user_input,
-                    "analysis_result": execution_plan,
-                    "message": "Management Agent analysis completed successfully"
-                }
-                
-            except Exception as e:
-                self.logger.error(f"Error in Management Agent testing: {e}")
-                return {
-                    "error": f"Management Agent error: {str(e)}",
-                    "status": "failed"
-                }
+    # ======================================= TEST MANAGEMENT AGENT & TOOL EXECUTION AGENT & ANALYSIS AGENT & REPORT AGENT =======================================
 
-    def run_management_test_mode(self):
-            """Run the system in Management Agent test mode"""
-            print("=== Management Agent Testing Mode ===")
-            print("This mode will only test the Management Agent's analysis capability")
-            print("Enter your security requests (type 'quit' to exit, 'full' to switch to full mode)")
-            
-            while True:
-                user_input = input("\nUser: ").strip()
-                
-                if user_input.lower() in ['quit', 'exit', 'q']:
-                    print("Goodbye!")
-                    break
-                
-                if not user_input:
-                    continue
-                
-                print("Analyzing with Management Agent...")
-                result = self.test_management_agent_only(user_input)
-                
-                print("\n=== Management Agent Analysis Result ===")
-                self._display_management_analysis(result)
-
-
-    def _display_management_analysis(self, result: Dict):
-            """Display Management Agent analysis in a formatted way"""
-            if result.get("status") == "failed":
-                print(f"❌ Error: {result.get('error', 'Unknown error')}")
-                return
-            
-            analysis_result = result.get("analysis_result", {})
-            
-            print(f"✅ Status: {result.get('status', 'Unknown')}")
-            print(f"🤖 Agent: {result.get('agent', 'Unknown')}")
-            print(f"📝 User Request: {result.get('user_request', 'Unknown')}")
-            
-            # Display analysis
-            if "analysis" in analysis_result:
-                print(f"\n📊 Analysis:")
-                print(f"   {analysis_result['analysis']}")
-            
-            # Display subtasks
-            if "subtasks" in analysis_result and analysis_result["subtasks"]:
-                print(f"\n📋 Planned Subtasks ({len(analysis_result['subtasks'])}):")
-                for i, subtask in enumerate(analysis_result["subtasks"], 1):
-                    print(f"   {i}. Task: {subtask.get('task', 'Unknown')}")
-                    print(f"      Agent: {subtask.get('agent', 'Unknown')}")
-                    # Safe handling of input_data
-                input_data = subtask.get('input_data', 'No data')
-                if input_data is None:
-                    input_data = 'No data'
-                elif not isinstance(input_data, str):
-                    input_data = str(input_data)
-                
-                # Safely truncate the input data
-                if len(input_data) > 100:
-                    print(f"      Input: {input_data[:100]}...")
-                else:
-                    print(f"      Input: {input_data}")
-                    print()
-            
-            # Display raw JSON for debugging
-            print("\n🔧 Raw JSON Response:")
-            print(json.dumps(analysis_result, indent=2, ensure_ascii=False))
-
-    # =============================================================================
-
-    # ======================================= TEST MANAGEMENT AGENT & TOOL EXECUTION AGENT ===================================================
-
-    def test_management_and_tool_agents(self, user_input: str) -> Dict:
+    def test_integrated_agents(self, user_input: str) -> Dict:
         """
         Test the integration between Management Agent and Tool Execution Agent
         """
@@ -231,6 +134,8 @@ class MultiAgentSecuritySystem:
             
             # Step 3: Execute Tool Tasks
             print("🔧 Step 2: Executing tool tasks...")
+            successful_tool_results = []
+
             for i, subtask in enumerate(subtasks):
                 if subtask.get("agent") == "Tool_Execution_Agent":
                     print(f"   📋 Executing subtask {i+1}: {subtask.get('task', 'Unknown task')}")
@@ -247,32 +152,110 @@ class MultiAgentSecuritySystem:
                         "agent": subtask.get("agent", ""),
                         "result": tool_result
                     })
+
+                    # Collect successful tool results for analysis
+                    if tool_result.get("status") == "success":
+                        successful_tool_results.append({
+                            "subtask_index": i+1,
+                            "task": subtask.get("task", ""),
+                            "result": tool_result
+                        })
                     
                     test_results["execution_flow"].append(f"Tool Execution Agent: Subtask {i+1} completed")
             
-            # Step 4: Determine final status
-            all_successful = True
-            for result in test_results["tool_execution_results"]:
-                if result["result"].get("status") != "success":
-                    all_successful = False
-                    break
+            # Step 4: Analysis Assessment Recommendation
+            if successful_tool_results:
+                print("📊 Step 3: Performing security analysis and assessment...")
+                
+                for tool_data in successful_tool_results:
+                    tool_result = tool_data["result"]
+                    subtask_index = tool_data["subtask_index"]
+                    
+                    # Create analysis task based on tool used
+                    tool_used = tool_result.get('tool_used', 'security tool')
+                    analysis_task = f"Analyze security findings from {tool_used} scan and provide risk assessment with recommendations"
+                    
+                    print(f"   🔍 Analyzing results from subtask {subtask_index} ({tool_used})...")
+                    
+                    # Execute analysis agent
+                    analysis_result = self.analysis_agent.execute({
+                        "task": analysis_task,
+                        "input_data": tool_result
+                    })
+                    
+                    test_results["analysis_results"].append({
+                        "subtask_index": subtask_index,
+                        "tool_used": tool_used,
+                        "analysis_task": analysis_task,
+                        "result": analysis_result
+                    })
+                    
+                    test_results["execution_flow"].append(f"Analysis Agent: Subtask {subtask_index} analyzed")
+            else:
+                test_results["execution_flow"].append("Analysis Agent: No successful tool results to analyze")
             
-            test_results["final_status"] = "success" if all_successful else "partial_success"
-            test_results["execution_flow"].append("Integration test: Completed")
+            # Step 5: Report Generation
+            print("📝 Step 4: Generating comprehensive security report...")
+            
+            # Prepare consolidated data for report generation
+            consolidated_data = {
+                "user_request": user_input,
+                "execution_plan": execution_plan,
+                "tool_results": test_results["tool_execution_results"],
+                "analysis_results": test_results["analysis_results"],
+                "assessment_scope": f"Multi-Agent Security Assessment for: {user_input}",
+                "timestamp": self._get_current_timestamp()
+            }
+            
+            # Generate report
+            report_task = "Generate comprehensive security assessment report consolidating all findings, analysis, and recommendations"
+            report_result = self.report_agent.execute({
+                "task": report_task,
+                "input_data": consolidated_data
+            })
+            
+            test_results["report_result"] = report_result
+            test_results["execution_flow"].append("Report Agent: Comprehensive report generated")
+            
+            # Step 6: Determine final status
+            tool_success = any(result["result"].get("status") == "success" 
+                            for result in test_results["tool_execution_results"])
+            
+            analysis_success = any(result["result"].get("status") == "success" 
+                                for result in test_results.get("analysis_results", []))
+            
+            report_success = report_result.get("status") == "success"
+            
+            if tool_success and analysis_success and report_success:
+                test_results["final_status"] = "success"
+            elif tool_success and analysis_success:
+                test_results["final_status"] = "partial_success"
+            elif tool_success:
+                test_results["final_status"] = "minimal_success"
+            else:
+                test_results["final_status"] = "failed"
+            
+            test_results["execution_flow"].append("Full integration test: Completed")
             
             return test_results
-            
+        
         except Exception as e:
-            self.logger.error(f"Error in integrated agent testing: {e}")
+            self.logger.error(f"Error in full integrated agent testing: {e}")
             test_results["final_status"] = "failed"
             test_results["error"] = str(e)
             test_results["execution_flow"].append(f"Error occurred: {str(e)}")
             return test_results
+    
+    def _get_current_timestamp(self) -> str:
+        """Get current timestamp for report generation"""
+        return datetime.now().isoformat()
         
 
     def run_integrated_test_mode(self):
         """Run the system in integrated test mode"""
-        print("=== Integrated Agent Testing Mode ===")
+        print("=== Full Integrated Agent Testing Mode ===")
+        print("Testing: Management Agent → Tool Execution Agent → Analysis Agent")
+        print("Enter your security requests (type 'quit' to exit)")
         
         while True:
             user_input = input("\nUser: ").strip()
@@ -287,14 +270,39 @@ class MultiAgentSecuritySystem:
             print("\n" + "="*60)
             print("🚀 Starting Integrated Agent Test Workflow")
             print("="*60)
-            
-            result = self.test_management_and_tool_agents(user_input)
-            
+
+            result = self.test_integrated_agents(user_input)
+
             print("\n=== Integrated Test Results ===")
             self._display_integrated_test_results(result)
 
     def _display_integrated_test_results(self, result: Dict):
-        """Display integrated test results in a formatted way"""
+        """Run the system in integrated test mode"""
+        print("=== Full Integrated Agent Testing Mode ===")
+        print("Testing: Management Agent → Tool Execution Agent → Analysis Agent")
+        print("Enter your security requests (type 'quit' to exit)")
+        
+        while True:
+            user_input = input("\nUser: ").strip()
+            
+            if user_input.lower() in ['quit', 'exit', 'q']:
+                print("Goodbye!")
+                break
+            
+            if not user_input:
+                continue
+            
+            print("\n" + "="*70)
+            print("🚀 Starting Full Integrated Agent Test Workflow")
+            print("="*70)
+            
+            result = self.test_integrated_agents(user_input)
+            
+            print("\n=== Full Integrated Test Results ===")
+            self._display_full_integrated_test_results(result)
+
+    def _display_full_integrated_test_results(self, result: Dict):
+        """Display full integrated test results in a formatted way"""
         print(f"📝 User Input: {result.get('user_input', 'Unknown')}")
         print(f"🎯 Final Status: {result.get('final_status', 'Unknown').upper()}")
         
@@ -354,21 +362,117 @@ class MultiAgentSecuritySystem:
                     print(f"      ❌ Agent Execution: FAILED")
                     print(f"      Error: {execution_result.get('message', 'Unknown error')}")
         
+        # Display analysis results
+        analysis_results = result.get('analysis_results', [])
+        if analysis_results:
+            print(f"\n📊 Analysis Assessment Results:")
+            for analysis in analysis_results:
+                subtask_idx = analysis.get('subtask_index', 'N/A')
+                tool_used = analysis.get('tool_used', 'Unknown')
+                analysis_result = analysis.get('result', {})
+                
+                print(f"\n   🔍 Analysis for Subtask {subtask_idx} ({tool_used}):")
+                print(f"      Status: {analysis_result.get('status', 'Unknown').upper()}")
+                
+                if analysis_result.get('status') == 'success':
+                    analysis_data = analysis_result.get('analysis', {})
+                    
+                    # Display risk assessment
+                    risk_assessment = analysis_data.get('risk_assessment', {})
+                    if risk_assessment:
+                        risk_level = risk_assessment.get('level', 'Unknown')
+                        risk_score = risk_assessment.get('score', 'N/A')
+                        print(f"      ⚠️  Risk Level: {risk_level} (Score: {risk_score}/10)")
+                        
+                        risk_factors = risk_assessment.get('factors', [])
+                        if risk_factors:
+                            factors_display = ', '.join(risk_factors[:2])
+                            if len(risk_factors) > 2:
+                                factors_display += f" (+{len(risk_factors)-2} more)"
+                            print(f"      🎯 Key Risk Factors: {factors_display}")
+                    
+                    # Display recommendations count
+                    recommendations = analysis_data.get('recommendations', [])
+                    if recommendations:
+                        print(f"      💡 Recommendations: {len(recommendations)} actions suggested")
+                        
+                        # Show top 2 recommendations
+                        for i, rec in enumerate(recommendations[:2], 1):
+                            priority = rec.get('priority', 'Unknown')
+                            action = rec.get('action', 'Unknown action')
+                            print(f"         {i}. [{priority}] {action[:50]}{'...' if len(action) > 50 else ''}")
+                    
+                    # Display brief analysis summary
+                    analysis_text = analysis_data.get('analysis', '')
+                    if analysis_text:
+                        summary = analysis_text[:100] + '...' if len(analysis_text) > 100 else analysis_text
+                        print(f"      📋 Summary: {summary}")
+                
+                elif analysis_result.get('status') == 'error':
+                    print(f"      ❌ Analysis Failed: {analysis_result.get('message', 'Unknown error')}")
+        
+        # Display report results
+        report_result = result.get('report_result')
+        if report_result:
+            print(f"\n📋 Security Assessment Report:")
+            print(f"   Status: {report_result.get('status', 'Unknown').upper()}")
+            
+            if report_result.get('status') == 'success':
+                report_data = report_result.get('report', {})
+                
+                # Display executive summary
+                exec_summary = report_data.get('executive_summary', '')
+                if exec_summary:
+                    summary_preview = exec_summary[:200] + '...' if len(exec_summary) > 200 else exec_summary
+                    print(f"   📄 Executive Summary: {summary_preview}")
+                
+                # Display report statistics
+                report_stats = report_data.get('report_statistics', {})
+                if report_stats:
+                    findings_count = report_stats.get('total_findings', 0)
+                    recommendations_count = report_stats.get('total_recommendations', 0)
+                    print(f"   📊 Report Stats: {findings_count} findings, {recommendations_count} recommendations")
+                
+                # Display risk summary
+                risk_summary = report_data.get('risk_summary', {})
+                if risk_summary:
+                    total_risks = risk_summary.get('total_risks', 0)
+                    critical_risks = risk_summary.get('critical_risks', 0)
+                    high_risks = risk_summary.get('high_risks', 0)
+                    print(f"   ⚠️  Risk Summary: {total_risks} total risks ({critical_risks} critical, {high_risks} high)")
+                
+                # Display report metadata
+                metadata = report_result.get('metadata', {})
+                if metadata:
+                    report_type = metadata.get('report_type', 'Unknown')
+                    print(f"   📋 Report Type: {report_type}")
+            
+            elif report_result.get('status') == 'error':
+                print(f"   ❌ Report Generation Failed: {report_result.get('message', 'Unknown error')}")
+        
         # Display errors if any
         if result.get('error'):
             print(f"\n❌ Error: {result['error']}")
         
         # Display final summary
-        print(f"\n📊 Test Summary:")
+        print(f"\n📊 Full Integration Test Summary:")
+        tool_count = len(result.get('tool_execution_results', []))
+        analysis_count = len(result.get('analysis_results', []))
+        report_status = "✅" if result.get('report_result', {}).get('status') == 'success' else "❌"
+        
         if result.get('final_status') == 'success':
             print(f"   ✅ All components executed successfully")
-            print(f"   ✅ Management Agent → Tool Execution integration working")
+            print(f"   ✅ Management Agent → Tool Execution ({tool_count}) → Analysis ({analysis_count}) → Report {report_status} integration working")
         elif result.get('final_status') == 'partial_success':
-            print(f"   ⚠️  Some components executed successfully, others failed")
+            print(f"   ⚠️  Tools and analysis executed successfully, but report had issues")
+            print(f"   ⚠️  Tool Execution: {tool_count} tasks, Analysis: {analysis_count} results, Report: {report_status}")
+        elif result.get('final_status') == 'minimal_success':
+            print(f"   ⚠️  Tools executed successfully, but analysis and report had issues")
+            print(f"   ⚠️  Tool Execution: {tool_count} tasks, Analysis: {analysis_count} results, Report: {report_status}")
         elif result.get('final_status') == 'failed':
             print(f"   ❌ Test failed - check errors above")
         
-        print("\n" + "="*60)
+        print("\n" + "="*70)
 
     def _display_nmap_summary(self, nmap_result: Dict):
         """Display brief Nmap results summary"""
